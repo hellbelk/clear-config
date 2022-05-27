@@ -42,7 +42,7 @@ const testFieldReference = async (schemaName, fieldName, entityType, entitySchem
 
 (async () => {
     console.log('clear config');
-    const {error, value: config} = schema.validate(require("./configuration_src.json"), {stripUnknown: true});
+    const {error, value: config} = schema.validate(require("../configuration_src.json"), {stripUnknown: true});
 
     if (error) {
         console.error('>>> config schema invalid');
