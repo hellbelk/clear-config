@@ -1,6 +1,11 @@
+"use strict"
+
 const fs = require("fs");
 const axios = require('axios').default;
-require('dotenv').config();
+
+const env = process.argv[2] || 'dev';
+require('dotenv').config({path: `.env${env}`});
+
 const schema = require('./schema');
 
 axios.defaults.baseURL = process.env.BENCHLING_API_URL;
@@ -40,9 +45,9 @@ const testFieldReference = async (schemaName, fieldName, entityType, entitySchem
     return true;
 }
 
-(async () => {
-    console.log('clear config');
-    const {error, value: config} = schema.validate(require("../configuration_src.json"), {stripUnknown: true});
+const processConfig = async (envName) => {
+    console.log(`clear ${envName} config`);
+    const {error, value: config} = schema.validate(require(`../configuration_src_${envName}.json`), {stripUnknown: true});
 
     if (error) {
         console.error('>>> config schema invalid');
@@ -87,11 +92,6 @@ const testFieldReference = async (schemaName, fieldName, entityType, entitySchem
                 hasError = true;
                 console.log(`>>> sequence schema "${schema.name}" field ${field.name} must has "lookupBy" property`);
             }
-        } else if (field.type === 'dropdown') {
-            if (!field.options) {
-                hasError = true;
-                console.log(`>>> sequence schema "${schema.name}" field ${field.name} must has "options" property`);
-            }
         } else if (field.type !== 'lookup' && field.entitySchemaLink) {
             hasError = true;
             console.log(`>>> sequence schema "${schema.name}" field ${field.name} entitySchemaLink property use only in lookup fields`);
@@ -103,13 +103,6 @@ const testFieldReference = async (schemaName, fieldName, entityType, entitySchem
     }
 
     console.log('test schemas in benchling');
-    const schemaTypeMapping = {
-        DNA: ['dna_sequence', 'dna_oligo'],
-        AA: ['aa_sequence']
-    }
-
-    // const dropdowns = await getDropdowns();
-
     for(const schema of config.sequenceSchemas) {
         const res = await axios.get(`/entity-schemas/${schema.id}`).catch(e => ({
             status: e.response.status
@@ -118,9 +111,7 @@ const testFieldReference = async (schemaName, fieldName, entityType, entitySchem
             console.log(`>>> sequence schema "${schema.name}" not found in benchling`);
         } else if (res.status === 200) {
             const benchlingSchema = res.data;
-            if (schemaTypeMapping[schema.type].indexOf(benchlingSchema.type) === -1) {
-                console.log(`>>> sequence schema "${schema.name}" has invalid type. expected types: ${schemaTypeMapping[schema.type].join(', ')}, actual type: ${benchlingSchema.type}`);
-            }
+            schema.type = benchlingSchema.type;
 
             const fieldDefinitions = benchlingSchema.fieldDefinitions.filter(f => !f.archiveRecord);
             const unknownFields = schema.fields.filter(f => !fieldDefinitions.find(fd => fd.name === f.name)).map(f => f.name);
@@ -141,20 +132,21 @@ const testFieldReference = async (schemaName, fieldName, entityType, entitySchem
             }
 
             for (const field of schema.fields) {
+                const fieldDefinition = fieldDefinitions.find(fd => fd.name === field.name);
+                field.isMulti = fieldDefinition.isMulti;
                 if (field.type === 'lookup') {
                     hasError &= await testFieldReference(schema.name, field.name, field.lookupEntity, field.entitySchemaLink);
                 } else if (field.type === 'dropdown'){
-                    const fieldDefinition = fieldDefinitions.find(fd => fd.name === field.name);
                     if (fieldDefinition.type === 'dropdown') {
                         const {data: dropdown} = await axios.get(`/dropdowns/${fieldDefinition.dropdownId}`);
                         if (dropdown.archiveRecord) {
                             hasError = true;
                             console.error(`>>> sequence schema ${schema.name} field "${field.name}" linked dropdown was deleted`);
                         } else {
-                            const unknownOptions = field.options.filter(fo => !dropdown.options.find(o => !o.archiveRecord && o.id === fo.id));
-                            if (unknownOptions.length) {
+                            field.options = dropdown.options.filter(o => !o.archiveRecord).map(o => ({id: o.id, name: o.name}));
+                            if (!field.options.length) {
                                 hasError = true;
-                                console.error(`>>> sequence schema ${schema.name} field "${field.name}" contains unknown options: ${unknownOptions.map(o => o.name).join(', ')}`);
+                                console.error(`>>> sequence schema ${schema.name} field "${field.name}" with dropdown type does not contains options`);
                             }
                         }
                     }
@@ -167,5 +159,7 @@ const testFieldReference = async (schemaName, fieldName, entityType, entitySchem
         throw new Error('incorrect benchling reference');
     }
 
-    fs.writeFileSync("./configuration.json", JSON.stringify(config));
-})();
+    fs.writeFileSync(`./configuration_${envName}.json`, JSON.stringify(config));
+};
+
+processConfig(env);

@@ -4,11 +4,12 @@ module.exports = Joi.object({
     sequenceSchemas: Joi.array().items(Joi.object({
         id: Joi.string().required(),
         name: Joi.string().required(),
-        type: Joi.string().valid('DNA', 'AA').required(),
+        type: Joi.string(),
         fields: Joi.array().items(Joi.object({
             name: Joi.string().required(),
             type: Joi.string().required(),
             isRequired: Joi.boolean().required(),
+            isMulti: Joi.boolean(),
             lookupEntity: Joi.string(),
             lookupBy: Joi.string(),
             entitySchemaLink: Joi.string(),
