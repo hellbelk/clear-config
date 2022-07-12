@@ -104,9 +104,14 @@ const processConfig = async (envName) => {
 
     console.log('test schemas in benchling');
     for(const schema of config.sequenceSchemas) {
-        const res = await axios.get(`/entity-schemas/${schema.id}`).catch(e => ({
-            status: e.response.status
-        }));
+        const res = await axios.get(`/entity-schemas/${schema.id}`).catch(e => {
+            if (e.response && e.response.status) {
+                return {status: e.response.status}
+            } else {
+                console.log(e.message);
+                throw new Error(e);
+            }
+        });
         if (res.status === 404) {
             console.log(`>>> sequence schema "${schema.name}" not found in benchling`);
         } else if (res.status === 200) {
